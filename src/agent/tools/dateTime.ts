@@ -8,3 +8,4 @@ export const getDateTime = tool({
     return new Date().toISOString();
   },
 });
+

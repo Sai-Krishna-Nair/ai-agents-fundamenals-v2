@@ -22,7 +22,7 @@ export async function executeTool(
   const result = await execute(args as any, {
     toolCallId: "",
     messages: [],
-  });
+  } as any);
 
   return String(result);
 }

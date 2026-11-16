@@ -17,10 +17,10 @@ export async function executeTool(
         return `Provider tool ${name} - executed by model provider`;
     }
 
-    const result  = await execute(args as any,{
+    const result  = await execute(args,{
         toolCallId : "",
         messages : []
-    })
+    } as any)
 
     return String(result);
 

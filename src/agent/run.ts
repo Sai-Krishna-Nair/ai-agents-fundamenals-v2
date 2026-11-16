@@ -20,11 +20,10 @@ export async function runAgent(
         system: SYSTEM_PROMPT,
         tools,
     });
-    console.log(text,toolCalls);
+    // console.log(text,toolCalls);    
 
     toolCalls.forEach(async (ele) => {
-        console.log(await executeTool(ele.toolName, ele.input ));
+        console.log(await executeTool(ele.toolName, ele.input as any ));
     });
 }
 
-runAgent("what is the current time right now?");

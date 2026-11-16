@@ -1,16 +1,19 @@
-import { getToolName, streamText, ToolCallNotFoundForApprovalError, uiMessageChunkSchema, type ModelMessage } from "ai";
+import {streamText, type ModelMessage, registerTelemetry} from "ai";
 import { groq } from "@ai-sdk/groq";
-import { observe, Laminar } from "@lmnr-ai/lmnr";
+import { observe, LaminarAiSdkTelemetry } from "@lmnr-ai/lmnr";
 import { tools } from "./tools/index.ts";
 import { executeTool } from "./executeTool.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
-import { setErrorMap } from "zod";
 
-Laminar.initialize({
-  projectApiKey: process.env.LMNR_API_KEY,
-});
+
+
+registerTelemetry(
+  new LaminarAiSdkTelemetry({
+    laminarOptions: { projectApiKey: process.env.LMNR_API_KEY },
+  }),
+);
 
 const MODEL_NAME = "openai/gpt-oss-20b";
 
@@ -23,10 +26,7 @@ export async function runAgent(
       const workingHistory = filterCompatibleMessages(conversationHistory);
 
 
-      const messages : ModelMessage[] = [{
-        role: "system",
-        content: SYSTEM_PROMPT
-      }, 
+      const messages : ModelMessage[] = [  
       ...workingHistory,
       {
         role: "user",
@@ -38,7 +38,8 @@ export async function runAgent(
     
     while(true){
       const result = streamText({
-        model:MODEL_NAME,
+        model:groq(MODEL_NAME),
+        instructions: SYSTEM_PROMPT,
         messages,
         tools,
       })

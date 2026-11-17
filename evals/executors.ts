@@ -1,6 +1,7 @@
-import { generateText, stepCountIs, tool, type ToolSet } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { generateText, stepCountIs, tool, type ModelMessage, type ToolSet } from "ai";
+import { groq } from "@ai-sdk/groq";
 import { z } from "zod";
+import { SYSTEM_PROMPT } from "../src/agent/system/prompt.ts";
 
 import type {
   EvalData,
@@ -8,6 +9,7 @@ import type {
   MultiTurnEvalData,
   MultiTurnResult,
 } from "./types.ts";
+
 import { buildMessages, buildMockedTools } from "./utils.ts";
 
 /**
@@ -53,6 +55,11 @@ const TOOL_DEFINITIONS: Record<
   },
 };
 
+
+
+
+
+
 /**
  * Single-turn executor with mocked tools.
  * Uses predefined tool definitions - tools never execute, only selection is tested.
@@ -75,7 +82,7 @@ export async function singleTurnWithMocks(
   }
 
   const result = await generateText({
-    model: openai(data.config?.model ?? "gpt-4o-mini"),
+    model: groq(data.config?.model ?? "gpt-4o-mini"),
     messages,
     tools,
     stopWhen: stepCountIs(1),
@@ -97,7 +104,60 @@ export async function singleTurnWithMocks(
   };
 }
 
+
+
+
+
+
 /**
  * Multi-turn executor with mocked tools.
  * Runs a complete agent loop with tools returning fixed values.
  */
+
+export async function multiTurnWithMocks (data:MultiTurnEvalData) : Promise<MultiTurnResult> {
+  const tools = buildMockedTools(data.mockTools);
+  const messages : ModelMessage[] = data.messages ?? [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: data.prompt! },
+  ];
+  const result = await generateText({
+    model: groq(data.config?.model ?? "openai/gpt-oss-20b"),
+    messages,
+    tools,
+    stopWhen: stepCountIs(data.config?.maxSteps ?? 20),
+  });
+
+  // Extract all tool calls in order from steps
+  const allToolCalls: string[] = [];
+  const steps = result.steps.map((step) => {
+    const stepToolCalls = (step.toolCalls ?? []).map((tc) => {
+      allToolCalls.push(tc.toolName);
+      return {
+        toolName: tc.toolName,
+        args: "args" in tc ? tc.args : {},
+      };
+    });
+
+    const stepToolResults = (step.toolResults ?? []).map((tr) => ({
+      toolName: tr.toolName,
+      result: "result" in tr ? tr.result : tr,
+    }));
+
+    return {
+      toolCalls: stepToolCalls.length > 0 ? stepToolCalls : undefined,
+      toolResults: stepToolResults.length > 0 ? stepToolResults : undefined,
+      text: step.text || undefined,
+    };
+  });
+
+  // Extract unique tools used
+  const toolsUsed = [...new Set(allToolCalls)];
+
+  return {
+    text: result.text,
+    steps,
+    toolsUsed,
+    toolCallOrder: allToolCalls,
+  };
+}
+

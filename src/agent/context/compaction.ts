@@ -1,5 +1,4 @@
 import { generateText, type ModelMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { extractMessageText } from "./tokenEstimator.ts";
 
 const SUMMARIZATION_PROMPT = `

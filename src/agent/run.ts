@@ -1,104 +1,96 @@
-import { streamText, type ModelMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { getTracer } from "@lmnr-ai/lmnr";
+import {streamText, type ModelMessage, registerTelemetry} from "ai";
+import { groq } from "@ai-sdk/groq";
+import { observe, LaminarAiSdkTelemetry } from "@lmnr-ai/lmnr";
 import { tools } from "./tools/index.ts";
 import { executeTool } from "./executeTool.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
-import { Laminar } from "@lmnr-ai/lmnr";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
-
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
 
-Laminar.initialize({
-  projectApiKey: process.env.LMNR_API_KEY,
-});
 
-const MODEL_NAME = "gpt-5-mini";
+
+registerTelemetry(
+  new LaminarAiSdkTelemetry({
+    laminarOptions: { projectApiKey: process.env.LMNR_API_KEY },
+  }),
+);
+
+const MODEL_NAME = "openai/gpt-oss-20b";
 
 export async function runAgent(
   userMessage: string,
   conversationHistory: ModelMessage[],
   callbacks: AgentCallbacks,
 ): Promise<ModelMessage[]> {
-  // Filter and check if we need to compact the conversation history before starting
-  const workingHistory = filterCompatibleMessages(conversationHistory);
+  return await observe({ name: "runAgent" }, async () => {
+      const workingHistory = filterCompatibleMessages(conversationHistory);
 
-  const messages: ModelMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    ...workingHistory,
-    { role: "user", content: userMessage },
-  ];
 
-  let fullResponse = "";
+      const messages : ModelMessage[] = [  
+      ...workingHistory,
+      {
+        role: "user",
+        content: userMessage
+      }
+    ];
 
-  while (true) {
-    const result = streamText({
-      model: openai(MODEL_NAME),
-      messages,
-      tools,
-      experimental_telemetry: {
-        isEnabled: true,
-        tracer: getTracer(),
-      },
-    });
+    let fullResponse = "";
+    
+    while(true){
+      const result = streamText({
+        model:groq(MODEL_NAME),
+        instructions: SYSTEM_PROMPT,
+        messages,
+        tools,
+      })
 
-    const toolCalls: ToolCallInfo[] = [];
-    let currentText = "";
-    let streamError: Error | null = null;
+      const toolCalls:ToolCallInfo[] = [];
+      let currentText = "";
+      let streamError:Error | null = null;
 
-    try {
-      for await (const chunk of result.fullStream) {
-        if (chunk.type === "text-delta") {
-          currentText += chunk.text;
-          callbacks.onToken(chunk.text);
+      try{
+
+        for await (const chunk of result.stream){
+          if(chunk.type === 'text-delta'){
+            currentText+=chunk.text;
+            callbacks.onToken(chunk.text);
+          }
+
+          if(chunk.type === 'tool-call'){
+            const input = 'input' in chunk? chunk.input : {};
+            toolCalls.push({
+              toolCallId: chunk.toolCallId,
+              toolName: chunk.toolName,
+              args: input as any,
+            })
+            callbacks.onToolCallStart(chunk.toolName,input);
+          }
         }
 
-        if (chunk.type === "tool-call") {
-          const input = "input" in chunk ? chunk.input : {};
-          toolCalls.push({
-            toolCallId: chunk.toolCallId,
-            toolName: chunk.toolName,
-            args: input as Record<string, unknown>,
-          });
-          callbacks.onToolCallStart(chunk.toolName, input);
+      } catch (e){
+        streamError =  e as Error;
+        if ( !currentText && !streamError.message.includes("No output generated")) {
+          throw streamError;
         }
       }
-    } catch (error) {
-      streamError = error as Error;
-      // If we have some text, continue processing
-      // Otherwise, rethrow if it's not a "no output" error
-      if (
-        !currentText &&
-        !streamError.message.includes("No output generated")
-      ) {
-        throw streamError;
+      fullResponse+=currentText;
+      if(streamError && !currentText){
+        fullResponse = "I apologize, but I wasn't able to generate a response. Could you please try rephrasing your message?";
+        callbacks.onToken(fullResponse);
+        break;
       }
-    }
 
-    fullResponse += currentText;
+      const finishReason  = await result.finishReason;
+      if(finishReason!=='tool-calls' || finishReason.length == 0){
+        const response = (await result.finalStep).response;
+        messages.push(...response.messages);
+        break;
+      }
 
-    // If stream errored with "no output" and we have no text, try to recover
-    if (streamError && !currentText) {
-      // Add a fallback response
-      fullResponse =
-        "I apologize, but I wasn't able to generate a response. Could you please try rephrasing your message?";
-      callbacks.onToken(fullResponse);
-      break;
-    }
+      const response = (await result.finalStep).response;
+      messages.push(...response.messages);
 
-    const finishReason = await result.finishReason;
-
-    if (finishReason !== "tool-calls" || toolCalls.length === 0) {
-      const responseMessages = await result.response;
-      messages.push(...responseMessages.messages);
-
-      break;
-    }
-
-    const responseMessages = await result.response;
-    messages.push(...responseMessages.messages);
-
-    for (const tc of toolCalls) {
+      for (const tc of toolCalls) {
       const result = await executeTool(tc.toolName, tc.args);
       callbacks.onToolCallEnd(tc.toolName, result);
 
@@ -114,9 +106,11 @@ export async function runAgent(
         ],
       });
     }
+
   }
-
   callbacks.onComplete(fullResponse);
-
   return messages;
+  });
+
+
 }

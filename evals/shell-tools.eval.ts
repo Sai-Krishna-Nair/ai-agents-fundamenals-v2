@@ -6,7 +6,7 @@ import {
 } from "./evaluators.ts";
 import type { EvalData, EvalTarget } from "./types.ts";
 import dataset from "./data/shell-tools.json" with { type: "json" };
-import { singleTurnWithMocks } from "./executors.ts";
+import { singleTurnExecutorWithMocks } from "./executors.ts";
 
 /**
  * Shell Tools Selection Evaluation
@@ -22,7 +22,7 @@ import { singleTurnWithMocks } from "./executors.ts";
 
 // Executor that runs single-turn tool selection with mocked tools
 const executor = async (data: EvalData) => {
-  return singleTurnWithMocks(data);
+  return singleTurnExecutorWithMocks(data);
 };
 
 // Run the evaluation
@@ -31,7 +31,7 @@ evaluate({
   executor,
   evaluators: {
     // For golden prompts: did it select runCommand?
-    toolsSelected: (output, target) => {
+    toolsSelected: (output:any, target:any) => {
       if (target?.category !== "golden") return 1;
       return toolsSelected(output, target);
     },

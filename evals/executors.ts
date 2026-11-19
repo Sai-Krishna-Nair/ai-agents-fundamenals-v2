@@ -102,11 +102,11 @@ export const singleTurnExecutorWithMocks = async (data: EvalData) => {
 export async function multiTurnExecutorWithMocks (data:MultiTurnEvalData) : Promise<MultiTurnResult> {
   const tools = buildMockedTools(data.mockTools);
   const messages : ModelMessage[] = data.messages ?? [
-    { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: data.prompt! },
   ];
   const result = await generateText({
     model: groq(data.config?.model ?? "openai/gpt-oss-20b"),
+    instructions: SYSTEM_PROMPT,
     messages,
     tools,
     stopWhen: stepCountIs(data.config?.maxSteps ?? 20),

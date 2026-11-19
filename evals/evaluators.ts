@@ -1,5 +1,6 @@
 import {generateText, modelMessageSchema, Output} from 'ai'
 import { groq } from "@ai-sdk/groq";
+import {JUDGE_PROMPT} from './judge_prompt.ts'
 
 import { z } from "zod";
 
@@ -32,15 +33,6 @@ export const llmJudge = async (
     }),
     messages: [
       {
-        role: "system",
-        content: `You are an evaluation judge. Score the agent's response on a scale of 1-10.
-        Scoring criteria:
-        - 10: Response fully addresses the task using tool results correctly
-        - 7-9: Response is mostly correct with minor issues
-        - 4-6: Response partially addresses the task
-        - 1-3: Response is mostly incorrect or irrelevant`,
-      },
-      {
         role: "user",
         content: `Task: ${target.originalTask}
         Tools called: ${JSON.stringify(output.toolCallOrder)}
@@ -50,6 +42,7 @@ export const llmJudge = async (
         Evaluate if this response correctly uses the tool results to answer the task.`,
       },
     ],
+    instructions : JUDGE_PROMPT, 
 
   });
 

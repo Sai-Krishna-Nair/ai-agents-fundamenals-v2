@@ -1,5 +1,7 @@
-import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import {generateText, modelMessageSchema, Output} from 'ai'
+import { groq } from "@ai-sdk/groq";
+import {JUDGE_PROMPT} from './judge_prompt.ts'
+
 import { z } from "zod";
 
 import type {
@@ -8,6 +10,77 @@ import type {
   MultiTurnTarget,
   MultiTurnResult,
 } from "./types.ts";
+import { SYSTEM_PROMPT } from '../src/agent/system/prompt.ts';
+
+
+const MODEL_NAME = "openai/gpt-oss-20b";
+
+
+const judgeSchema = z.object({
+  score: z.number().min(1).max(10).describe("Score from 1-10 where 10 is perfect"),
+  reason: z.string().describe('Brief explanation for the score'),
+})
+
+
+export const llmJudge = async (
+  output: MultiTurnResult,
+  target: MultiTurnTarget
+) => {
+  const { output: judgment } = await generateText({
+    model: groq(MODEL_NAME),
+    output: Output.object({
+      schema: judgeSchema,
+    }),
+    messages: [
+      {
+        role: "user",
+        content: `Task: ${target.originalTask}
+        Tools called: ${JSON.stringify(output.toolCallOrder)}
+        Tool results provided: ${JSON.stringify(target.mockToolResults)}
+        Agent's final response:
+        ${output.text}
+        Evaluate if this response correctly uses the tool results to answer the task.`,
+      },
+    ],
+    instructions : JUDGE_PROMPT, 
+
+  });
+
+  return judgment.score/10; 
+};
+
+
+
+
+/**
+ * Evaluator: Precision/recall score for tool selection.
+ * Returns a score between 0 and 1 based on correct selections.
+ * For secondary prompts.
+ */
+
+
+export function toolSelectionScore(
+  output: SingleTurnResult,
+  target: EvalTarget,
+): number {
+  if (!target.expectedTools?.length) {
+    return output.selectedAny ? 0.5 : 1;
+  }
+
+  const expected = new Set(target.expectedTools);
+  const selected = new Set(output.toolNames);
+
+  const hits = output.toolNames.filter((t) => expected.has(t)).length;
+  const precision = selected.size > 0 ? hits / selected.size : 0;
+  const recall = expected.size > 0 ? hits / expected.size : 0;
+
+  // Simple F1-ish score
+  if (precision + recall === 0) return 0;
+  return (2 * precision * recall) / (precision + recall);
+}
+
+
+
 
 export function toolsSelected(
   output: SingleTurnResult | MultiTurnResult,
@@ -29,6 +102,8 @@ export function toolsSelected(
   return expectedTools.every((t) => selected.has(t)) ? 1 : 0;
 }
 
+
+
 /**
  * Evaluator: Check if forbidden tools were avoided.
  * Returns 1 if NONE of the forbidden tools are in the output, 0 otherwise.
@@ -45,31 +120,6 @@ export function toolsAvoided(
   );
 
   return target.forbiddenTools.some((t) => selected.has(t)) ? 0 : 1;
-}
-
-/**
- * Evaluator: Precision/recall score for tool selection.
- * Returns a score between 0 and 1 based on correct selections.
- * For secondary prompts.
- */
-export function toolSelectionScore(
-  output: SingleTurnResult,
-  target: EvalTarget,
-): number {
-  if (!target.expectedTools?.length) {
-    return output.selectedAny ? 0.5 : 1;
-  }
-
-  const expected = new Set(target.expectedTools);
-  const selected = new Set(output.toolNames);
-
-  const hits = output.toolNames.filter((t) => expected.has(t)).length;
-  const precision = selected.size > 0 ? hits / selected.size : 0;
-  const recall = expected.size > 0 ? hits / expected.size : 0;
-
-  // Simple F1-ish score
-  if (precision + recall === 0) return 0;
-  return (2 * precision * recall) / (precision + recall);
 }
 
 /**
@@ -95,62 +145,4 @@ export function toolOrderCorrect(
   }
 
   return expectedIdx / target.expectedToolOrder.length;
-}
-
-const judgeSchema = z.object({
-  score: z
-    .number()
-    .min(1)
-    .max(10)
-    .describe("Score from 1-10 where 10 is perfect"),
-  reason: z.string().describe("Brief explanation for the score"),
-});
-
-/**
- * Evaluator: LLM-as-judge for output quality.
- * Uses structured output to reliably assess if the agent's response is correct.
- * Returns a score from 0-1 (internally uses 1-10 scale divided by 10).
- */
-export async function llmJudge(
-  output: MultiTurnResult,
-  target: MultiTurnTarget,
-): Promise<number> {
-  const result = await generateObject({
-    model: openai("gpt-5.1"),
-    schema: judgeSchema,
-    schemaName: "evaluation",
-    providerOptions: {
-      openai: {
-        reasoningEffort: "high",
-      },
-    },
-    schemaDescription: "Evaluation of an AI agent response",
-    messages: [
-      {
-        role: "system",
-        content: `You are an evaluation judge. Score the agent's response on a scale of 1-10.
-
-Scoring criteria:
-- 10: Response fully addresses the task using tool results correctly
-- 7-9: Response is mostly correct with minor issues
-- 4-6: Response partially addresses the task
-- 1-3: Response is mostly incorrect or irrelevant`,
-      },
-      {
-        role: "user",
-        content: `Task: ${target.originalTask}
-
-Tools called: ${JSON.stringify(output.toolCallOrder)}
-Tool results provided: ${JSON.stringify(target.mockToolResults)}
-
-Agent's final response:
-${output.text}
-
-Evaluate if this response correctly uses the tool results to answer the task.`,
-      },
-    ],
-  });
-
-  // Convert 1-10 score to 0-1 range
-  return result.object.score / 10;
 }

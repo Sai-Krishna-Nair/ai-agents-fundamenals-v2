@@ -31,6 +31,10 @@
       "description": "Fresh task: User asks to read a file and extract info. Should use readFile, not shell."
     }
   },
+
+
+
+
   {
     "data": {
       "messages": [
@@ -67,6 +71,10 @@
       "description": "Mid-conversation: Pre-filled history, user asks multi-step task. Should list then read."
     }
   },
+
+
+
+  
   {
     "data": {
       "prompt": "What files are in the src directory?",

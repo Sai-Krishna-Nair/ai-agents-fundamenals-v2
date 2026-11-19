@@ -6,7 +6,7 @@ import type {
   MultiTurnResult,
 } from "./types.ts";
 import dataset from "./data/agent-multiturn.json" with { type: "json" };
-import { multiTurnWithMocks } from "./executors.ts";
+import { multiTurnExecutorWithMocks } from "./executors.ts";
 
 /**
  * Multi-Turn Agent Evaluation
@@ -26,7 +26,7 @@ import { multiTurnWithMocks } from "./executors.ts";
 
 // Executor that runs multi-turn agent with mocked tools
 const executor = async (data: MultiTurnEvalData): Promise<MultiTurnResult> => {
-  return multiTurnWithMocks(data);
+  return multiTurnExecutorWithMocks(data);
 };
 
 // Run the evaluation

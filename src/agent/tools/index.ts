@@ -1,20 +1,26 @@
-import { readFile, writeFile, listFiles, deleteFile } from "./file.ts";
+import { getDateTime } from "./dateTime.ts";
+import {readFile,writeFile,listFiles,deleteFile} from './file.ts'
+import {type ToolSet } from 'ai';
 
 // All tools combined for the agent
-export const tools = {
+export const tools : ToolSet = {
+  getDateTime,
   readFile,
   writeFile,
   listFiles,
   deleteFile,
 };
 
-// Export individual tools for selective use in evals
+
 export { readFile, writeFile, listFiles, deleteFile } from "./file.ts";
 
-// Tool sets for evals
-export const fileTools = {
+
+export const fileTools: ToolSet = {
   readFile,
   writeFile,
   listFiles,
   deleteFile,
 };
+
+
+

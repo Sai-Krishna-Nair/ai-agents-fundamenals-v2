@@ -51,6 +51,17 @@ export async function runAgent(
       try{
 
         for await (const chunk of result.stream){
+
+          if (chunk.type === "error") {
+            streamError =
+              chunk.error instanceof Error
+                ? chunk.error
+                : new Error(String(chunk.error));
+            console.error("Stream error:", streamError);
+            break;
+          }
+
+
           if(chunk.type === 'text-delta'){
             currentText+=chunk.text;
             callbacks.onToken(chunk.text);

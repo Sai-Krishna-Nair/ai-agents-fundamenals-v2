@@ -1,69 +1,112 @@
-import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
-import { openai } from "@ai-sdk/openai";
-
+import { generateText, stepCountIs, tool, type ModelMessage, type ToolSet } from "ai";
+import { groq } from "@ai-sdk/groq";
+import { z } from "zod";
 import { SYSTEM_PROMPT } from "../src/agent/system/prompt.ts";
+
 import type {
   EvalData,
   SingleTurnResult,
   MultiTurnEvalData,
   MultiTurnResult,
 } from "./types.ts";
+
 import { buildMessages, buildMockedTools } from "./utils.ts";
 
-export async function singleTurnExecutor(
-  data: EvalData,
-  availableTools: ToolSet,
-): Promise<SingleTurnResult> {
-  const messages = buildMessages(data);
 
-  // Filter to only tools specified in data
+const TOOL_DEFINITONS = {
+  readFile: {
+    description: "Read the contents of a file at a specified path",
+    parameters: z.object({
+      path : z.string().describe("the path to the file you want to read")
+    }),
+  },
+  writeFile: {
+    description: "Write the given content to a file at the given path",
+    parameters: z.object({
+      path : z.string().describe("the path to the file you want to Write to") ,
+      content : z.string().describe("the content you have to write")
+    }),
+  },
+  listFiles: {
+    description: "List all the files in a directory",
+    parameters: z.object({
+      path : z.string().describe("the path to the direcory whose files you want to list")
+    }),
+  },
+  deleteFile: {
+    description: "Delete a file at the specified path",
+    parameters: z.object({
+      path : z.string().describe("the path to the file you want to delete")
+    }),
+  },
+  runCommand: {
+    description: "Execute a shell command and return its output",
+    parameters: z.object({
+      command : z.string().describe("the shell command to execute")
+    }),
+  },
+
+}
+
+
+export type ToolName = keyof typeof TOOL_DEFINITONS;
+
+export const singleTurnExecutorWithMocks = async (data: EvalData) => {
+  const allMessages = buildMessages(data);
+
+  const systemMessage = allMessages.find((m) => m.role === "system");
+  const messages = allMessages.filter((m) => m.role !== "system");
+
+  const instructions =
+    typeof systemMessage?.content === "string" ? systemMessage.content : undefined;
+
   const tools: ToolSet = {};
-  for (const toolName of data.tools) {
-    if (availableTools[toolName]) {
-      tools[toolName] = availableTools[toolName];
+  for (const name of data.tools) {
+    const def = TOOL_DEFINITONS[name as ToolName];
+    if (def) {
+      tools[name] = tool({
+        description: def.description,
+        inputSchema: def.parameters as any,
+      });
     }
   }
 
-  const result = await generateText({
-    model: openai(data.config?.model ?? "gpt-5-mini"),
-    messages,
+  const { toolCalls } = await generateText({
+    model: groq(data.config?.model ?? "openai/gpt-oss-20b"),
+    instructions,           // ← system prompt goes here
+    messages,               // ← only user (and later assistant) messages
     tools,
-    stopWhen: stepCountIs(1), // Single step - just get tool selection
+    stopWhen: stepCountIs(1),
     temperature: data.config?.temperature ?? undefined,
   });
 
-  // Extract tool calls from the result
-  const toolCalls = (result.toolCalls ?? []).map((tc) => ({
-    toolName: tc.toolName,
+  const calls = toolCalls.map((tc) => ({
+    toolname: tc.toolName,
     args: "args" in tc ? tc.args : {},
   }));
 
   const toolNames = toolCalls.map((tc) => tc.toolName);
 
   return {
-    toolCalls,
+    calls,
     toolNames,
     selectedAny: toolNames.length > 0,
   };
-}
+};
 
 /**
  * Multi-turn executor with mocked tools.
  * Runs a complete agent loop with tools returning fixed values.
  */
-export async function multiTurnWithMocks(
-  data: MultiTurnEvalData,
-): Promise<MultiTurnResult> {
-  const tools = buildMockedTools(data.mockTools);
 
-  // Build messages from either prompt or pre-filled history
-  const messages: ModelMessage[] = data.messages ?? [
-    { role: "system", content: SYSTEM_PROMPT },
+export async function multiTurnExecutorWithMocks (data:MultiTurnEvalData) : Promise<MultiTurnResult> {
+  const tools = buildMockedTools(data.mockTools);
+  const messages : ModelMessage[] = data.messages ?? [
     { role: "user", content: data.prompt! },
   ];
-
   const result = await generateText({
-    model: openai(data.config?.model ?? "gpt-5-mini"),
+    model: groq(data.config?.model ?? "openai/gpt-oss-20b"),
+    instructions: SYSTEM_PROMPT,
     messages,
     tools,
     stopWhen: stepCountIs(data.config?.maxSteps ?? 20),
@@ -102,3 +145,4 @@ export async function multiTurnWithMocks(
     toolCallOrder: allToolCalls,
   };
 }
+

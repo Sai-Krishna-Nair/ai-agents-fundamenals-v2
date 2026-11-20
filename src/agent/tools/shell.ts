@@ -1,11 +1,11 @@
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import shell from "shelljs";
 
 /**
  * Run a shell command
  */
-export const runCommand = tool({
+export const runCommand: Tool= tool({
   description:
     "Execute a shell command and return its output. Use this for system operations, running scripts, or interacting with the operating system.",
   inputSchema: z.object({

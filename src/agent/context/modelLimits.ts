@@ -7,18 +7,42 @@ export const DEFAULT_THRESHOLD = 0.8;
 
 /**
  * Model limits registry
- * Currently only includes GPT-5 models
+ * uses the OG Groq limits on gpt-oss-20b/120b
  */
+// const MODEL_LIMITS: Record<string, ModelLimits> = {
+//   "openai/gpt-oss-20b": {
+//     inputLimit: 131072,
+//     outputLimit: 65536,
+//     contextWindow: 131072,
+//   },
+//   "openai/gpt-oss-120b": {
+//     inputLimit: 131072,
+//     outputLimit: 65536,
+//     contextWindow: 131072,
+//   },
+// };
+
+// /**
+//  * Default limits used when model is not found in registry
+//  */
+// const DEFAULT_LIMITS: ModelLimits = {
+//   inputLimit: 131072,
+//   outputLimit: 65536,
+//   contextWindow: 131072,
+// };
+
+
+// enforces groq's free tier api limit which is 8k tokens
 const MODEL_LIMITS: Record<string, ModelLimits> = {
-  "gpt-5": {
-    inputLimit: 272000,
-    outputLimit: 128000,
-    contextWindow: 400000,
+  "openai/gpt-oss-20b": {
+    inputLimit: 6000,
+    outputLimit: 2000,
+    contextWindow: 8000,
   },
-  "gpt-5-mini": {
-    inputLimit: 272000,
-    outputLimit: 128000,
-    contextWindow: 400000,
+  "openai/gpt-oss-120b": {
+    inputLimit: 6000,
+    outputLimit: 2000,
+    contextWindow: 8000,
   },
 };
 
@@ -26,10 +50,13 @@ const MODEL_LIMITS: Record<string, ModelLimits> = {
  * Default limits used when model is not found in registry
  */
 const DEFAULT_LIMITS: ModelLimits = {
-  inputLimit: 128000,
-  outputLimit: 16000,
-  contextWindow: 128000,
+  inputLimit: 6000,
+  outputLimit: 2000,
+  contextWindow: 8000,
 };
+
+
+
 
 /**
  * Get token limits for a specific model.
@@ -42,9 +69,12 @@ export function getModelLimits(model: string): ModelLimits {
     return MODEL_LIMITS[model];
   }
 
-  // Check for gpt-5 variants
-  if (model.startsWith("gpt-5")) {
-    return MODEL_LIMITS["gpt-5"];
+  // Match variants without the "openai/" prefix
+  if (model.includes("gpt-oss-120b")) {
+    return MODEL_LIMITS["openai/gpt-oss-120b"];
+  }
+  if (model.includes("gpt-oss-20b")) {
+    return MODEL_LIMITS["openai/gpt-oss-20b"];
   }
 
   return DEFAULT_LIMITS;
@@ -58,7 +88,7 @@ export function isOverThreshold(
   contextWindow: number,
   threshold: number = DEFAULT_THRESHOLD,
 ): boolean {
-  return totalTokens > contextWindow * threshold;
+  return totalTokens>=contextWindow*threshold;
 }
 
 /**
@@ -68,5 +98,5 @@ export function calculateUsagePercentage(
   totalTokens: number,
   contextWindow: number,
 ): number {
-  return (totalTokens / contextWindow) * 100;
+  return (totalTokens/contextWindow)*100;
 }

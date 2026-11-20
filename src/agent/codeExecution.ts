@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import fs from "fs/promises";
 import path from "path";
@@ -10,7 +10,7 @@ import shell from "shelljs";
  * This is a composite tool that demonstrates doing multiple steps internally
  * vs letting the model orchestrate separate tools (writeFile + runCommand)
  */
-export const executeCode = tool({
+export const executeCode : Tool = tool({
   description:
     "Execute code for anything you need compute for. Supports JavaScript (Node.js), Python, and TypeScript. Returns the output of the execution.",
   inputSchema: z.object({

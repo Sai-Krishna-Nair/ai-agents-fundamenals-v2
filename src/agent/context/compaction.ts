@@ -1,8 +1,9 @@
 import { generateText, type ModelMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { extractMessageText } from "./tokenEstimator.ts";
+import {groq} from '@ai-sdk/groq'
 
-const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation so far that preserves:
+const SUMMARIZATION_PROMPT = `
+You are a conversation summarizer. Your task is to create a concise summary of the conversation so far that preserves:
 
 1. Key decisions and conclusions reached
 2. Important context and facts mentioned
@@ -27,6 +28,8 @@ function messagesToText(messages: ModelMessage[]): string {
     .join("\n\n");
 }
 
+
+
 /**
  * Compact a conversation by summarizing it with an LLM.
  *
@@ -37,9 +40,10 @@ function messagesToText(messages: ModelMessage[]): string {
  *
  * The system prompt should be prepended by the caller.
  */
+
 export async function compactConversation(
   messages: ModelMessage[],
-  model: string = "gpt-5-mini",
+  model: string = "openai/gpt-oss-20b",
 ): Promise<ModelMessage[]> {
   // Filter out system messages - they're handled separately
   const conversationMessages = messages.filter((m) => m.role !== "system");
@@ -51,7 +55,7 @@ export async function compactConversation(
   const conversationText = messagesToText(conversationMessages);
 
   const { text: summary } = await generateText({
-    model: openai(model),
+    model: groq(model),
     prompt: SUMMARIZATION_PROMPT + conversationText,
   });
 

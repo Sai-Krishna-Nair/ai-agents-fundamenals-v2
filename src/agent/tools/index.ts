@@ -1,5 +1,6 @@
 import { getDateTime } from "./dateTime.ts";
 import {readFile,writeFile,listFiles,deleteFile} from './file.ts'
+import { runCommand } from "./shell.ts";
 import {search} from './web-search.ts'
 import {type ToolSet } from 'ai';
 
@@ -11,7 +12,7 @@ export const tools : ToolSet = {
   listFiles,
   deleteFile,
   search,
-  
+  runCommand
 };
 
 
@@ -24,6 +25,3 @@ export const fileTools: ToolSet = {
   listFiles,
   deleteFile,
 };
-
-
-

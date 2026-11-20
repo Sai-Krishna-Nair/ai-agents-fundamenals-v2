@@ -6,6 +6,16 @@ import { executeTool } from "./executeTool.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
+import {
+  estimateMessagesTokens,
+  getModelLimits,
+  isOverThreshold,
+  calculateUsagePercentage,
+  compactConversation,
+  DEFAULT_THRESHOLD,
+} from "./context/index.ts";
+
+  
 
 
 
@@ -22,19 +32,31 @@ export async function runAgent(
   conversationHistory: ModelMessage[],
   callbacks: AgentCallbacks,
 ): Promise<ModelMessage[]> {
+
   return await observe({ name: "runAgent" }, async () => {
-      const workingHistory = filterCompatibleMessages(conversationHistory);
+      const modelLimits = getModelLimits(MODEL_NAME);
 
+      let workingHistory = filterCompatibleMessages(conversationHistory);
 
-      const messages : ModelMessage[] = [  
+      let messages : ModelMessage[] = [  
       ...workingHistory,
       {
         role: "user",
-        content: userMessage
+        content: userMessage 
       }
     ];
 
+    const preCheckTokens = estimateMessagesTokens(messages);
+    if (isOverThreshold(preCheckTokens.total, modelLimits.contextWindow)) {
+        // Compact the conversation
+        messages = await compactConversation(messages, MODEL_NAME);
+      }
+ 
+
     let fullResponse = "";
+
+
+
     
     while(true){
       const result = streamText({
@@ -43,6 +65,25 @@ export async function runAgent(
         messages,
         tools,
       })
+    
+
+      const reportTokenUsage = () => {
+      if (callbacks.onTokenUsage) {
+            const usage = estimateMessagesTokens(messages);
+            callbacks.onTokenUsage({
+              inputTokens: usage.input,
+              outputTokens: usage.output,
+              totalTokens: usage.total,
+              contextWindow: modelLimits.contextWindow,
+              threshold: DEFAULT_THRESHOLD,
+              percentage: calculateUsagePercentage(
+                usage.total,
+                modelLimits.contextWindow,
+              ),
+            });
+          }
+        };
+
 
       const toolCalls:ToolCallInfo[] = [];
       let currentText = "";
@@ -84,6 +125,7 @@ export async function runAgent(
           throw streamError;
         }
       }
+      
       fullResponse+=currentText;
       if(streamError && !currentText){
         fullResponse = "I apologize, but I wasn't able to generate a response. Could you please try rephrasing your message?";
@@ -95,11 +137,13 @@ export async function runAgent(
       if(finishReason!=='tool-calls' || finishReason.length == 0){
         const response = (await result.finalStep).response;
         messages.push(...response.messages);
+        reportTokenUsage();
         break;
       }
 
       const response = (await result.finalStep).response;
       messages.push(...response.messages);
+      reportTokenUsage();
 
       for (const tc of toolCalls) {
       const result = await executeTool(tc.toolName, tc.args);
@@ -116,6 +160,7 @@ export async function runAgent(
           },
         ],
       });
+      reportTokenUsage();
     }
   }
   callbacks.onComplete(fullResponse);
